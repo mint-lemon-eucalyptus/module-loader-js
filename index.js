@@ -2,22 +2,30 @@
 var async = require('async');
 var util = require('util');
 var path = require('path');
+var fs = require('fs');
 var underscore = require('underscore');
 var EventEmitter = require('events').EventEmitter;
-var qw;
+var qw=console.log;
 
-function Module() {
+function ModuleLoader() {
 }
-util.inherits(Module, EventEmitter);
-Module.prototype.$configure = function (a) {
+util.inherits(ModuleLoader, EventEmitter);
+ModuleLoader.prototype.$configure = function (a) {
     this.$config = a;
     this.$config.App = this.$config.App || {};
     this.$config.App.classLoader = this.$config.App.classLoader || {};
+    this.packages = [];
+    this.modules = {};
+    this.moduleAliases = {};
 }
-Module.prototype.$run = function () {
+ModuleLoader.prototype.setPackage = function (p) {
+    this.packages.push(p);
+}
+ModuleLoader.prototype.$datasource = function () {
+}
+ModuleLoader.prototype.$run = function () {
     var self = this;
     var stack = [];
-    this.modules = {};
     var constructors = {};
     var counter = 0;
     for (var i in arguments) {
@@ -28,6 +36,7 @@ Module.prototype.$run = function () {
     }
 
     function $instantiate(depName) {
+        qw('instantiating:', depName)
         var constructor = constructors[depName];
         var dependencies = getParamNames(constructor);
         var argsArray = dependencies.map(function (dep) {
@@ -46,14 +55,64 @@ Module.prototype.$run = function () {
         instance.$run ? instance.$run() : false;
         instance.$test ? instance.$test() : false;
     };
+
     while (stack.length > 0) {
         $instantiate(stack.pop());
     }
     qw = self.modules['Qw'].log(this);
     qw('after processing', Object.keys(self.modules));
 
+
+    function getRawModuleName(moduleNameWithSlashes) {
+        var arr = moduleNameWithSlashes.split('/');
+        return arr[arr.length - 1]
+    }
+
     function $resolve_recursive(curModuleName) {
+        qw('loading', curModuleName);
+        var pth = self.$config.App.classLoader[curModuleName];
+        var packagesDefined = self.packages;
+        //iterate over packages
+        var curPackage = packagesDefined[0];
+
+        //return from node_modules/module-loader
+        var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, curModuleName + '.js');
 //        qw('processing:', curModuleName);
+        if (curModuleName.charAt(0) == '@') {   //load all modules in Directory
+            curModuleName = curModuleName.slice(1);
+            var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, curModuleName);
+            qw('directory', curModuleName, indexPath);
+            indexPath = path.join(__dirname, indexPath)
+            var files = fs.readdirSync(indexPath, function (err, files) {
+            });
+            files.map(function (file) {
+                return path.join(indexPath, file);
+            }).filter(function (file) {
+                return fs.statSync(file).isFile();
+            }).forEach(function (file) {
+                qw("%s (%s)", file, path.extname(file));
+                var modName = path.basename(file, '.js');
+                var fileNameUppercased = uppercased(modName);
+
+                addToStack(fileNameUppercased);
+                resolveDepsOfConstructor(file, fileNameUppercased);
+            });
+
+            return;
+        }
+
+        addToStack(curModuleName);
+
+
+        resolveDepsOfConstructor(indexPath, curModuleName);
+
+    }
+
+    function uppercased(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+    function addToStack(curModuleName) {
         if (!underscore.find(stack, function (dep) {    //if this module was not defined
                 return dep === curModuleName;
             })) {
@@ -64,13 +123,15 @@ Module.prototype.$run = function () {
             });
             stack.push(curModuleName);//add it to the end of dependency sequence
         }
+        //  qw('stack',stack)
+    }
 
-        var pth = self.$config.App.classLoader[curModuleName];
-        var indexPath = pth ? path.join('../', pth) : path.join('../modules/', curModuleName, 'index.js');
+    function resolveDepsOfConstructor(indexPath, curModuleName) {
         var constructor = require(indexPath);
+
         constructors[curModuleName] = constructor;
         var dependenciesNames = getParamNames(constructor);
-        //      qw(curModuleName, 'deps', dependenciesNames);
+        qw(curModuleName, 'deps', dependenciesNames);
         dependenciesNames.forEach(function (i) {
             if (i === '$config') {
                 return;
@@ -79,26 +140,36 @@ Module.prototype.$run = function () {
             ++counter;
             $resolve_recursive(i);
         });
-
     }
 
     function dummy() {
     }
+
 }
 
-Module.prototype.$module = function (name) {
+ModuleLoader.prototype.$module = function (name) {
     var m = this.modules[name];
     if (!m) {
         throw new Error('no module ' + name)
     }
     return m;
 }
-Module.prototype.getModulesNames = function () {
+ModuleLoader.prototype.$addModule = function (instance,name) {
+    var m = this.modules[name];
+    qw('adding', name)
+    if (!m) {
+        this.modules[name] = instance;
+    } else {
+        qw('module', name, 'already loaded')
+    }
+}
+ModuleLoader.prototype.getModulesNames = function () {
     return Object.keys(this.modules);
 }
-Module.prototype.getConfig = function (module) {
+ModuleLoader.prototype.getConfig = function (module) {
     var config;
     if (typeof module === "string") {
+        qw('getting config for ', module)
         return this.$config[module] || {};
     }
     var moduleName = getObjectClass(module);
@@ -109,7 +180,7 @@ Module.prototype.getConfig = function (module) {
     }
     return config;
 }
-Module.prototype.$logger = function (a) {//todo argument must be instance of module, not a function(aka Qw)!!!
+ModuleLoader.prototype.$logger = function (a) {//todo argument must be instance of module, not a function(aka Qw)!!!
     if (a) {
         this.$logger = a;
     } else {
@@ -179,6 +250,21 @@ function className(object, defaultName) {
     }
     return result || defaultName;
 }
-Module.prototype.EVENT_BOOTSTRAP_DONE = 'EVENT_BOOTSTRAP_DONE';
 
-module.exports = Module;
+function dirExists(pth) {
+    var stats;
+    try {
+        // Query the entry
+        stats = fs.lstatSync(pth);
+
+        // Is it a directory?
+        return stats.isDirectory();
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+ModuleLoader.prototype.EVENT_BOOTSTRAP_DONE = 'EVENT_BOOTSTRAP_DONE';
+
+module.exports = ModuleLoader;
