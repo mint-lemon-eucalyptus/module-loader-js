@@ -5,7 +5,7 @@ var path = require('path');
 var fs = require('fs');
 var underscore = require('underscore');
 var EventEmitter = require('events').EventEmitter;
-var qw=console.log;
+var qw = console.log;
 
 function ModuleLoader() {
 }
@@ -70,6 +70,9 @@ ModuleLoader.prototype.$run = function () {
 
     function $resolve_recursive(curModuleName) {
         qw('loading', curModuleName);
+        if(self.modules[curModuleName]){    //if module is already instantiated
+            return;
+        }
         var pth = self.$config.App.classLoader[curModuleName];
         var packagesDefined = self.packages;
         //iterate over packages
@@ -78,28 +81,7 @@ ModuleLoader.prototype.$run = function () {
         //return from node_modules/module-loader
         var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, curModuleName + '.js');
 //        qw('processing:', curModuleName);
-        if (curModuleName.charAt(0) == '@') {   //load all modules in Directory
-            curModuleName = curModuleName.slice(1);
-            var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, curModuleName);
-            qw('directory', curModuleName, indexPath);
-            indexPath = path.join(__dirname, indexPath)
-            var files = fs.readdirSync(indexPath, function (err, files) {
-            });
-            files.map(function (file) {
-                return path.join(indexPath, file);
-            }).filter(function (file) {
-                return fs.statSync(file).isFile();
-            }).forEach(function (file) {
-                qw("%s (%s)", file, path.extname(file));
-                var modName = path.basename(file, '.js');
-                var fileNameUppercased = uppercased(modName);
 
-                addToStack(fileNameUppercased);
-                resolveDepsOfConstructor(file, fileNameUppercased);
-            });
-
-            return;
-        }
 
         addToStack(curModuleName);
 
@@ -127,6 +109,11 @@ ModuleLoader.prototype.$run = function () {
     }
 
     function resolveDepsOfConstructor(indexPath, curModuleName) {
+        qw('resolving:', indexPath, curModuleName);
+        //  qw(self.getModulesNames(),self.modules[curModuleName])
+        if (self.modules[curModuleName]) {
+            return;
+        }
         var constructor = require(indexPath);
 
         constructors[curModuleName] = constructor;
@@ -154,10 +141,10 @@ ModuleLoader.prototype.$module = function (name) {
     }
     return m;
 }
-ModuleLoader.prototype.$addModule = function (instance,name) {
+ModuleLoader.prototype.$addModule = function (instance, name) {
     var m = this.modules[name];
-    qw('adding', name)
     if (!m) {
+        qw('adding', name)
         this.modules[name] = instance;
     } else {
         qw('module', name, 'already loaded')
