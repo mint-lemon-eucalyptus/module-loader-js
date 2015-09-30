@@ -16,6 +16,10 @@ ModuleLoader.prototype.$configure = function (a) {
     this.$config.App.classLoader = this.$config.App.classLoader || {};
     this.packages = [];
     this.modules = {};
+    if (!this.$config.DEBUG) {
+        qw = function () {
+        };
+    }
     this.moduleAliases = {};
 }
 ModuleLoader.prototype.setPackage = function (p) {
@@ -36,7 +40,7 @@ ModuleLoader.prototype.$run = function () {
     }
 
     function $instantiate(depName) {
-      //  qw('instantiating:', depName)
+        //  qw('instantiating:', depName)
         var constructor = constructors[depName];
         var dependencies = getParamNames(constructor);
         var argsArray = dependencies.map(function (dep) {
@@ -60,7 +64,7 @@ ModuleLoader.prototype.$run = function () {
         $instantiate(stack.pop());
     }
     qw = self.modules['Qw'].log(this);
-   // qw('after processing', Object.keys(self.modules));
+    // qw('after processing', Object.keys(self.modules));
 
 
     function getRawModuleName(moduleNameWithSlashes) {
@@ -70,7 +74,7 @@ ModuleLoader.prototype.$run = function () {
 
     function $resolve_recursive(curModuleName) {
         qw('loading', curModuleName);
-        if(self.modules[curModuleName]){    //if module is already instantiated
+        if (self.modules[curModuleName]) {    //if module is already instantiated
             return;
         }
         var pth = self.$config.App.classLoader[curModuleName];
@@ -109,7 +113,7 @@ ModuleLoader.prototype.$run = function () {
     }
 
     function resolveDepsOfConstructor(indexPath, curModuleName) {
-      //  qw('resolving:', indexPath, curModuleName);
+        //  qw('resolving:', indexPath, curModuleName);
         //  qw(self.getModulesNames(),self.modules[curModuleName])
         if (self.modules[curModuleName]) {
             return;
@@ -118,7 +122,7 @@ ModuleLoader.prototype.$run = function () {
 
         constructors[curModuleName] = constructor;
         var dependenciesNames = getParamNames(constructor);
-      //  qw(curModuleName, 'deps', dependenciesNames);
+        //  qw(curModuleName, 'deps', dependenciesNames);
         dependenciesNames.forEach(function (i) {
             if (i === '$config') {
                 return;
@@ -156,7 +160,7 @@ ModuleLoader.prototype.getModulesNames = function () {
 ModuleLoader.prototype.getConfig = function (module) {
     var config;
     if (typeof module === "string") {
-    //    qw('getting config for ', module)
+        //    qw('getting config for ', module)
         return this.$config[module] || {};
     }
     var moduleName = getObjectClass(module);
