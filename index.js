@@ -12,14 +12,14 @@ function ModuleLoader() {
 util.inherits(ModuleLoader, EventEmitter);
 ModuleLoader.prototype.$configure = function (a) {
     this.$config = a;
+    if (!this.$config.DEBUG) {//enable logging in debug mode only
+        qw = function () {
+        }
+    }
     this.$config.App = this.$config.App || {};
     this.$config.App.classLoader = this.$config.App.classLoader || {};
     this.packages = [];
     this.modules = {};
-    if (!this.$config.DEBUG) {
-        qw = function () {
-        };
-    }
     this.moduleAliases = {};
 }
 ModuleLoader.prototype.setPackage = function (p) {
@@ -40,7 +40,7 @@ ModuleLoader.prototype.$run = function () {
     }
 
     function $instantiate(depName) {
-        //  qw('instantiating:', depName)
+        qw('instantiating:', depName)
         var constructor = constructors[depName];
         var dependencies = getParamNames(constructor);
         var argsArray = dependencies.map(function (dep) {
@@ -64,7 +64,7 @@ ModuleLoader.prototype.$run = function () {
         $instantiate(stack.pop());
     }
     qw = self.modules['Qw'].log(this);
-    // qw('after processing', Object.keys(self.modules));
+    qw('after processing', Object.keys(self.modules));
 
 
     function getRawModuleName(moduleNameWithSlashes) {
@@ -89,7 +89,6 @@ ModuleLoader.prototype.$run = function () {
 
         addToStack(curModuleName);
 
-
         resolveDepsOfConstructor(indexPath, curModuleName);
 
     }
@@ -100,8 +99,8 @@ ModuleLoader.prototype.$run = function () {
 
     function addToStack(curModuleName) {
         if (!underscore.find(stack, function (dep) {    //if this module was not defined
-                return dep === curModuleName;
-            })) {
+            return dep === curModuleName;
+        })) {
             stack.push(curModuleName);//add it
         } else {//if defined as dependency in another module
             stack = underscore(stack).filter(function (item) {
@@ -113,16 +112,21 @@ ModuleLoader.prototype.$run = function () {
     }
 
     function resolveDepsOfConstructor(indexPath, curModuleName) {
-        //  qw('resolving:', indexPath, curModuleName);
+        qw('resolving:', indexPath, curModuleName);
         //  qw(self.getModulesNames(),self.modules[curModuleName])
         if (self.modules[curModuleName]) {
             return;
         }
-        var constructor = require(indexPath);
-
+        var constructor;
+        try {
+            constructor = require(curModuleName);
+        } catch (e) {
+            console.log("loading from node_modules", e.code, curModuleName);
+            constructor = require(indexPath);
+        }
         constructors[curModuleName] = constructor;
         var dependenciesNames = getParamNames(constructor);
-        //  qw(curModuleName, 'deps', dependenciesNames);
+        qw(curModuleName, 'deps', dependenciesNames);
         dependenciesNames.forEach(function (i) {
             if (i === '$config') {
                 return;
@@ -160,7 +164,7 @@ ModuleLoader.prototype.getModulesNames = function () {
 ModuleLoader.prototype.getConfig = function (module) {
     var config;
     if (typeof module === "string") {
-        //    qw('getting config for ', module)
+        qw('getting config for ', module)
         return this.$config[module] || {};
     }
     var moduleName = getObjectClass(module);
