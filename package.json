@@ -1,6 +1,6 @@
 {
   "name": "module-loader",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "oge dependency loader and resolver",
   "main": "index.js",
   "scripts": {

@@ -117,14 +117,16 @@ ModuleLoader.prototype.$run = function () {
         if (self.modules[curModuleName]) {
             return;
         }
-        var constructor;
-        try {
-            constructor = require(curModuleName);
-        } catch (e) {
-            console.log("loading from node_modules", e.code, curModuleName);
-            constructor = require(indexPath);
+        var constructor = constructors[curModuleName];
+        if (!constructor) {
+            try {
+                constructor = require(curModuleName);
+            } catch (e) {
+//                console.log("loading from node_modules", e.code, curModuleName);
+                constructor = require(indexPath);
+            }
+            constructors[curModuleName] = constructor;
         }
-        constructors[curModuleName] = constructor;
         var dependenciesNames = getParamNames(constructor);
         qw(curModuleName, 'deps', dependenciesNames);
         dependenciesNames.forEach(function (i) {
