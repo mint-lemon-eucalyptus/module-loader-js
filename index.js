@@ -111,7 +111,6 @@ ModuleLoader.prototype.$run = function () {
         //  qw('stack',stack)
     }
 
-
     function resolveDepsOfConstructor(indexPath, curModuleName) {
         qw('resolving:', indexPath, curModuleName);
         //  qw(self.getModulesNames(),self.modules[curModuleName])
