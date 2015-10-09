@@ -111,6 +111,7 @@ ModuleLoader.prototype.$run = function () {
         //  qw('stack',stack)
     }
 
+
     function resolveDepsOfConstructor(indexPath, curModuleName) {
         qw('resolving:', indexPath, curModuleName);
         //  qw(self.getModulesNames(),self.modules[curModuleName])
@@ -120,10 +121,10 @@ ModuleLoader.prototype.$run = function () {
         var constructor = constructors[curModuleName];
         if (!constructor) {
             try {
-                constructor = require(indexPath);
+                constructor = require(curModuleName);
             } catch (e) {
                 console.log("loading from node_modules", e.code, curModuleName);
-                constructor = require(curModuleName);
+                constructor = require(indexPath);
             }
             constructors[curModuleName] = constructor;
         }
