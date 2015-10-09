@@ -120,12 +120,12 @@ ModuleLoader.prototype.$run = function () {
         }
         var constructor = constructors[curModuleName];
         if (!constructor) {
-//            try {
-//                constructor = require(curModuleName);
-//            } catch (e) {
-//                console.log("loading from node_modules", e.code, curModuleName);
+            try {
+                constructor = require(curModuleName);
+            } catch (e) {
+                console.log("loading from node_modules", e.code, curModuleName);
                 constructor = require(indexPath);
-//            }
+            }
             constructors[curModuleName] = constructor;
         }
         var dependenciesNames = getParamNames(constructor);
