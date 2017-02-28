@@ -2,8 +2,8 @@
 var async = require('async');
 var util = require('util');
 var path = require('path');
+require('colors');
 var fs = require('fs');
-var underscore = require('underscore');
 var EventEmitter = require('events').EventEmitter;
 var qw = console.log;
 
@@ -20,130 +20,95 @@ ModuleLoader.prototype.$configure = function (a) {
     this.$config.App.classLoader = this.$config.App.classLoader || {};
     this.packages = [];
     this.modules = {};
-    this.moduleAliases = {};
-}
+    this.moduleAliases = this.$config.App.alias || {};
+    console.log('alias:', this.moduleAliases);
+};
 ModuleLoader.prototype.setPackage = function (p) {
     this.packages.push(p);
-}
+};
 ModuleLoader.prototype.$datasource = function () {
-}
+};
 ModuleLoader.prototype.$run = function () {
     var self = this;
-    var stack = [];
-    var constructors = {};
-    var counter = 0;
-    for (var i in arguments) {
-        var depName = arguments[i];
-        if (typeof depName === "string") {
-            $resolve_recursive(depName);
-        }
-    }
-
-    function $instantiate(depName) {
-        qw('instantiating:', depName)
-        var constructor = constructors[depName];
-        var dependencies = getParamNames(constructor);
-        var argsArray = dependencies.map(function (dep) {
-            if (dep !== '$config') {
-                return self.modules[dep];
-            } else {
-                return self.getConfig(depName);
-            }
-        });
-
-        var instance = applyToConstructor(constructor, argsArray);
-        instance.$root = self;
-        instance.$config = self.getConfig(depName);
-        self.modules[depName] = instance;
-
-        instance.$run ? instance.$run() : false;
-        instance.$test ? instance.$test() : false;
-    };
-
-    while (stack.length > 0) {
-        $instantiate(stack.pop());
-    }
-    qw = self.modules['Qw'].log(this);
-    qw('after processing', Object.keys(self.modules));
-
-
-    function getRawModuleName(moduleNameWithSlashes) {
-        var arr = moduleNameWithSlashes.split('/');
-        return arr[arr.length - 1]
-    }
-
-    function $resolve_recursive(curModuleName) {
-        qw('loading', curModuleName);
-        if (self.modules[curModuleName]) {    //if module is already instantiated
+    var onAppLoadedCallback;
+    async.eachSeries(arguments, function (i, cb) {
+        //так как каждый модуль может тянуть зависимости, обходим их рекурсивно
+        if (typeof i === "function") {
+            onAppLoadedCallback = i;
+            cb();
             return;
         }
+        if (typeof i !== "string") {
+            throw new Error('pass module names in $run method');
+        }
+        $resolve_recursive(i, cb);
+    }, function (err) {
+        console.log('load done'.greenBG, 'errors:', err ? err : 'none');
+        console.log(self.getModulesNames());
+        onAppLoadedCallback && onAppLoadedCallback(err);
+    });
+
+    function $resolve_recursive(curModuleName, onThisModuleInstatiatedCallback) {
+        console.log('resolving', curModuleName);
+        var module = self.modules[curModuleName];
+        if (module) {    //if module is already instantiated
+            console.log('resolving', curModuleName, 'already loaded');
+            onThisModuleInstatiatedCallback(null, module);
+            return;
+        }
+        //смотрим зависимости и грузим их
         var pth = self.$config.App.classLoader[curModuleName];
         var packagesDefined = self.packages;
         //iterate over packages
         var curPackage = packagesDefined[0];
 
+
+        //проходим по каждой зависимости и если она еще не разрешена, грузим с учетом её зависимостей
+        // console.log(indexPath);
+        //если есть переопределение для модуля, заменяем класс
+        var alias = self.moduleAliases[curModuleName];
+        var moduleClassnameToLoad = curModuleName;
+        if (alias) {
+            moduleClassnameToLoad = alias;
+        }
         //return from node_modules/module-loader
-        var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, curModuleName + '.js');
-//        qw('processing:', curModuleName);
-
-
-        addToStack(curModuleName);
-
-        resolveDepsOfConstructor(indexPath, curModuleName);
-
-    }
-
-    function uppercased(string) {
-        return string.charAt(0).toUpperCase() + string.slice(1);
-    }
-
-    function addToStack(curModuleName) {
-        if (!underscore.find(stack, function (dep) {    //if this module was not defined
-            return dep === curModuleName;
-        })) {
-            stack.push(curModuleName);//add it
-        } else {//if defined as dependency in another module
-            stack = underscore(stack).filter(function (item) {
-                return item !== curModuleName;
-            });
-            stack.push(curModuleName);//add it to the end of dependency sequence
-        }
-        //  qw('stack',stack)
-    }
-
-
-    function resolveDepsOfConstructor(indexPath, curModuleName) {
-        qw('resolving:', indexPath, curModuleName);
-        //  qw(self.getModulesNames(),self.modules[curModuleName])
-        if (self.modules[curModuleName]) {
-            return;
-        }
-        var constructor = constructors[curModuleName];
-        if (!constructor) {
-            try {
-                constructor = require(curModuleName);
-            } catch (e) {
-                console.log("loading from node_modules", e.code, curModuleName);
-                constructor = require(indexPath);
-            }
-            constructors[curModuleName] = constructor;
+        var indexPath = pth ? path.join('../', pth) : "../../" + path.join(curPackage, moduleClassnameToLoad + '.js');
+        var constructor;
+        try {
+            constructor = require(moduleClassnameToLoad);
+        } catch (e) {
+            //  console.log("loading from node_modules", e.code, curModuleName);
+            constructor = require(indexPath);
         }
         var dependenciesNames = getParamNames(constructor);
-        qw(curModuleName, 'deps', dependenciesNames);
-        dependenciesNames.forEach(function (i) {
-            if (i === '$config') {
-                return;
+        console.log(curModuleName, 'deps', dependenciesNames);
+        var dependencies = [];
+        var moduleConfig = {};
+        async.eachSeries(dependenciesNames, function (dependencyName, onDependencyLoadedCallback) {
+            console.log('processing dependency', dependencyName, 'of', curModuleName);
+            if (dependencyName === '$config') {
+                moduleConfig = self.$config[curModuleName];
+                dependencies.push(moduleConfig);
+                onDependencyLoadedCallback(null, moduleConfig);
+            } else {
+                $resolve_recursive(dependencyName, function (err, dependencyModule) {
+                    self.modules[dependencyName] = dependencyModule;
+                    dependencies.push(dependencyModule);
+                    onDependencyLoadedCallback(null, dependencyModule);
+                });
             }
-            //        qw(i);
-            ++counter;
-            $resolve_recursive(i);
+        }, function () {
+//готовы все зависимости текущего модуля
+            var instance = applyToConstructor(constructor, dependencies);
+            instance.$root = self;
+            instance.$config = moduleConfig;
+            self.modules[curModuleName] = instance;
+            typeof instance.$run === "function" && instance.$run();
+            console.log('module', curModuleName, 'prepared', self.getModulesNames());
+            onThisModuleInstatiatedCallback(null, instance)
         });
     }
-
-    function dummy() {
-    }
-
-}
+};
 
 ModuleLoader.prototype.$module = function (name) {
     var m = this.modules[name];
@@ -151,72 +116,33 @@ ModuleLoader.prototype.$module = function (name) {
         throw new Error('no module ' + name)
     }
     return m;
-}
+};
 ModuleLoader.prototype.$addModule = function (instance, name) {
     var m = this.modules[name];
     if (!m) {
-        qw('adding', name)
+        qw('adding', name);
         this.modules[name] = instance;
     } else {
         qw('module', name, 'already loaded')
     }
-}
+};
 ModuleLoader.prototype.getModulesNames = function () {
     return Object.keys(this.modules);
-}
+};
 ModuleLoader.prototype.getConfig = function (module) {
     var config;
     if (typeof module === "string") {
-        qw('getting config for ', module)
+        qw('getting config for ', module);
         return this.$config[module] || {};
     }
-    var moduleName = getObjectClass(module);
-    config = this.$config[moduleName];
-    if (!config) {
-        qw('warning! config entry is not found:'.yellow, moduleName);
-        config = {};
-    }
-    return config;
-}
-ModuleLoader.prototype.$logger = function (a) {//todo argument must be instance of module, not a function(aka Qw)!!!
-    if (a) {
-        this.$logger = a;
-    } else {
-        return this.$logger
-    }
-}
-
+    //если передали модуль в качестве параметра
+    return module.$config || {};
+};
 
 function applyToConstructor(constructor, argArray) {
     var args = [null].concat(argArray);
     var factoryFunction = constructor.bind.apply(constructor, args);
     return new factoryFunction();
-}
-function bindConstruct(fn) {
-    // since constructor always accepts a static this value
-    // so bindConstruct cannot specify this
-    var extraArgs = [].slice.call(arguments, 1);
-
-    // create a 'subclass' of fn
-    function sub() {
-        var args = extraArgs.concat([].slice.call(arguments));
-        fn.apply(this, args);
-    }
-
-    sub.prototype = fn.prototype;
-    sub.prototype.constructor = sub;
-
-    return sub;
-}
-function getObjectClass(obj) {  //is used by identifying Caller class
-    if (obj && obj.constructor && obj.constructor.toString) {
-        var arr = obj.constructor.toString().match(
-            /function\s*(\w+)/);
-        if (arr && arr.length == 2) {
-            return arr[1];
-        }
-    }
-    return undefined;
 }
 function getParamNames(func) {
     var STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/mg;
@@ -227,42 +153,5 @@ function getParamNames(func) {
         result = [];
     return result;
 }
-
-
-/**
- * Gets the classname of an object or function if it can.  Otherwise returns the provided default.
- *
- * Getting the name of a function is not a standard feature, so while this will work in many
- * cases, it should not be relied upon except for informational messages (e.g. logging and Error
- * messages).
- *
- * @private
- */
-function className(object, defaultName) {
-    var nameFromToStringRegex = /^function\s?([^\s(]*)/;
-    var result = "";
-    if (typeof object === 'function') {
-        result = object.name || object.toString().match(nameFromToStringRegex)[1];
-    } else if (typeof object.constructor === 'function') {
-        result = className(object.constructor, defaultName);
-    }
-    return result || defaultName;
-}
-
-function dirExists(pth) {
-    var stats;
-    try {
-        // Query the entry
-        stats = fs.lstatSync(pth);
-
-        // Is it a directory?
-        return stats.isDirectory();
-    }
-    catch (e) {
-        return false;
-    }
-}
-
-ModuleLoader.prototype.EVENT_BOOTSTRAP_DONE = 'EVENT_BOOTSTRAP_DONE';
 
 module.exports = ModuleLoader;
