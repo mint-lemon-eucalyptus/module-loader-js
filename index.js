@@ -17,6 +17,7 @@ ModuleLoader.prototype.$configure = function (a) {
         }
     }
     this.$config.App = this.$config.App || {};
+    this.$config.App.alias = this.$config.App.alias || {};
     this.$config.App.classLoader = this.$config.App.classLoader || {};
     this.packages = [];
     this.modules = {};
@@ -108,6 +109,10 @@ ModuleLoader.prototype.$run = function () {
             onThisModuleInstatiatedCallback(null, instance)
         });
     }
+};
+
+ModuleLoader.prototype.getAlias = function (moduleName) {
+    return this.$config.App.alias[moduleName];
 };
 
 ModuleLoader.prototype.$module = function (name) {
