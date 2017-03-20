@@ -10,19 +10,23 @@ var qw = console.log;
 function ModuleLoader() {
 }
 util.inherits(ModuleLoader, EventEmitter);
+var logResolving = true;
 ModuleLoader.prototype.$configure = function (a) {
     this.$config = a;
-    if (!this.$config.DEBUG) {//enable logging in debug mode only
-        qw = function () {
-        }
-    }
+
     this.$config.App = this.$config.App || {};
     this.$config.App.alias = this.$config.App.alias || {};
     this.$config.App.classLoader = this.$config.App.classLoader || {};
     this.packages = [];
     this.modules = {};
     this.moduleAliases = this.$config.App.alias || {};
-    console.log('alias:', this.moduleAliases);
+    qw('using aliases:', Object.keys(this.moduleAliases).length > 0 ? this.moduleAliases : 'none');
+    logResolving = this.$config.App.logResolving;
+    if (!logResolving) {
+        qw('logging while resolving is disabled')
+        qw = function () {
+        }
+    }
 };
 ModuleLoader.prototype.setPackage = function (p) {
     this.packages.push(p);
@@ -44,16 +48,16 @@ ModuleLoader.prototype.$run = function () {
         }
         $resolve_recursive(i, cb);
     }, function (err) {
-        console.log('load done'.greenBG, 'errors:', err ? err : 'none');
-        console.log(self.getModulesNames());
+        console.log('load done'.greenBG, err ? err : 'without errors');
+        qw(self.getModulesNames());
         onAppLoadedCallback && onAppLoadedCallback(err);
     });
 
     function $resolve_recursive(curModuleName, onThisModuleInstatiatedCallback) {
-        console.log('resolving', curModuleName);
+        qw('resolving', curModuleName);
         var module = self.modules[curModuleName];
         if (module) {    //if module is already instantiated
-            console.log('resolving', curModuleName, 'already loaded');
+            qw('resolving', curModuleName, 'already loaded');
             onThisModuleInstatiatedCallback(null, module);
             return;
         }
@@ -65,7 +69,7 @@ ModuleLoader.prototype.$run = function () {
 
 
         //проходим по каждой зависимости и если она еще не разрешена, грузим с учетом её зависимостей
-        // console.log(indexPath);
+        // qw(indexPath);
         //если есть переопределение для модуля, заменяем класс
         var alias = self.moduleAliases[curModuleName];
         var moduleClassnameToLoad = curModuleName;
@@ -78,15 +82,15 @@ ModuleLoader.prototype.$run = function () {
         try {
             constructor = require(moduleClassnameToLoad);
         } catch (e) {
-            //  console.log("loading from node_modules", e.code, curModuleName);
+            qw("loading from node_modules", e.code, curModuleName);
             constructor = require(indexPath);
         }
         var dependenciesNames = getParamNames(constructor);
-        console.log(curModuleName, 'deps', dependenciesNames);
+        qw(curModuleName, 'deps', dependenciesNames);
         var dependencies = [];
         var moduleConfig = {};
         async.eachSeries(dependenciesNames, function (dependencyName, onDependencyLoadedCallback) {
-            console.log('processing dependency', dependencyName, 'of', curModuleName);
+            qw('processing dependency', dependencyName, 'of', curModuleName);
             if (dependencyName === '$config') {
                 moduleConfig = self.$config[curModuleName];
                 dependencies.push(moduleConfig);
@@ -105,7 +109,7 @@ ModuleLoader.prototype.$run = function () {
             instance.$config = moduleConfig;
             self.modules[curModuleName] = instance;
             typeof instance.$run === "function" && instance.$run();
-            console.log('module', curModuleName, 'prepared', self.getModulesNames());
+            qw('module', curModuleName, 'prepared', self.getModulesNames());
             onThisModuleInstatiatedCallback(null, instance)
         });
     }
