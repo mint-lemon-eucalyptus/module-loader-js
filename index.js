@@ -51,6 +51,7 @@ ModuleLoader.prototype.$run = function () {
         console.log('load done'.greenBG, err ? err : 'without errors');
         qw(self.getModulesNames());
         onAppLoadedCallback && onAppLoadedCallback(err);
+        self.emit(self.EVENT_BOOTSTRAPPED);
     });
 
     function $resolve_recursive(curModuleName, onThisModuleInstatiatedCallback) {
@@ -163,4 +164,5 @@ function getParamNames(func) {
     return result;
 }
 
+ModuleLoader.prototype.EVENT_BOOTSTRAPPED = 'bootstrap_ok';
 module.exports = ModuleLoader;
