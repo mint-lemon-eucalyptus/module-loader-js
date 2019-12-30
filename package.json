@@ -1,6 +1,6 @@
 {
   "name": "module-loader",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "oge dependency loader and resolver",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "author": "mint-lemon",
   "license": "BSD",
   "dependencies": {
-    "async": "~1.4.2",
+    "async": "*",
     "colors": "1.0.3"
   }
 }

@@ -52,6 +52,14 @@ ModuleLoader.prototype.$run = function () {
         qw(self.getModulesNames());
         onAppLoadedCallback && onAppLoadedCallback(err);
         self.emit(self.EVENT_BOOTSTRAPPED);
+
+        //all modules are bootstrapped. Need to go through all modules and call $onAppBootstrapped callback
+        self.getModulesNames().forEach(function(moduleName){
+            var module=self.$module(moduleName);
+            if(typeof module.$onAppBootstrapped==="function"){
+                module.$onAppBootstrapped(self);
+            }
+        })
     });
 
     function $resolve_recursive(curModuleName, onThisModuleInstatiatedCallback) {
